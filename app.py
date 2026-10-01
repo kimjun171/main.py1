@@ -40,8 +40,6 @@ y_full = data["연평균기온"]
 
 slope_full, intercept_full, r_val_full, _, _ = stats.linregress(X_full, y_full)
 r2_full = r_val_full ** 2
-
-# 100년당 상승 온도로 변환 (1년당 기울기 * 100)
 slope_100y_full = slope_full * 100
 
 # 3. 선형 회귀 계산 (최근 20년 데이터만 추출)
@@ -52,24 +50,24 @@ X_recent = data_recent20["경과연수"]
 y_recent = data_recent20["연평균기온"]
 
 slope_recent, intercept_recent, r_val_recent, _, _ = stats.linregress(X_recent, y_recent)
+r2_recent = r_val_recent ** 2
 slope_100y_recent = slope_recent * 100
 
-# 4. 분석 개요 및 100년당 기온 상승률 비교 (나란히 배치)
+# 4. 분석 개요 및 100년당 기온 상승률 & 상관계수 비교
 min_year = int(data["연도"].min())
 max_year = int(data["연도"].max())
 total_years = len(data)
 
 st.markdown("---")
-st.markdown("### 📈 100년당 기온 상승 속도 비교")
+st.markdown("### 📈 100년당 기온 상승 속도 및 상관계수 비교")
 
-# 메트릭 카드를 2개의 컬럼으로 나란히 표시
 col1, col2 = st.columns(2)
 
 with col1:
     st.metric(
         label=f"🌐 전체 기간 ({min_year}~{max_year}년, {total_years}개 연도)",
         value=f"+{slope_100y_full:.2f} °C / 100년",
-        help="1년 평균 상승 폭을 100년 단위로 환산한 값입니다."
+        delta=f"상관계수 r = {r_val_full:.4f} (R² = {r2_full:.4f})"
     )
 
 with col2:
@@ -79,8 +77,8 @@ with col2:
     st.metric(
         label=f"🔥 최근 20년 ({recent_min}~{recent_max}년)",
         value=f"+{slope_100y_recent:.2f} °C / 100년",
-        delta=f"전체 대비 {diff_rate:+.2f} °C/100년 빠른 상승",
-        delta_color="inverse"  # 기온 상승 속도가 빠른 것을 경고(빨간색)로 표시
+        delta=f"상관계수 r = {r_val_recent:.4f} (전체 대비 {diff_rate:+.2f}°C/100년)",
+        delta_color="inverse"
     )
 
 st.markdown("---")
@@ -115,7 +113,7 @@ fig.add_trace(go.Scatter(
     x=line_years,
     y=line_pred_full,
     mode='lines',
-    name=f'전체 기간 추세선 (+{slope_100y_full:.2f}°C/100년)',
+    name=f'전체 추세선 (+{slope_100y_full:.2f}°C/100년, r={r_val_full:.2f})',
     line=dict(color='#ff7f0e', width=2)
 ))
 
@@ -126,7 +124,7 @@ fig.add_trace(go.Scatter(
     x=line_years,
     y=line_pred_recent,
     mode='lines',
-    name=f'최근 20년 추세선 (+{slope_100y_recent:.2f}°C/100년)',
+    name=f'최근 20년 추세선 (+{slope_100y_recent:.2f}°C/100년, r={r_val_recent:.2f})',
     line=dict(color='#e377c2', width=2, dash='dash')
 ))
 
@@ -141,7 +139,7 @@ fig.add_trace(go.Scatter(
 
 # 레이아웃 설정
 fig.update_layout(
-    title=f"서울 연평균 기온 및 추세선 비교 (전체 상관계수 R: {r_val_full:.4f})",
+    title=f"서울 연평균 기온 및 회귀선 (전체 상관계수 r: {r_val_full:.4f}, R²: {r2_full:.4f})",
     xaxis_title="연도",
     yaxis_title="평균 기온 (°C)",
     hovermode="x unified",
