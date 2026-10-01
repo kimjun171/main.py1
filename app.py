@@ -14,10 +14,7 @@ DATA_URL = "https://raw.githubusercontent.com/greatsong/modudata/bb860932644270a
 
 @st.cache_data
 def load_data():
-    # CSV 데이터 읽기 (UTF-8 인코딩)
     df = pd.read_csv(DATA_URL, encoding="utf-8")
-    
-    # 날짜 컬럼을 datetime 형식으로 변환
     df["날짜"] = pd.to_datetime(df["날짜"])
     df["연도"] = df["날짜"].dt.year
     
@@ -36,40 +33,68 @@ def load_data():
 
 data = load_data()
 
-# 2. 선형 회귀 계산 (1908년 기준 경과 연수 사용)
-# X: 1908년 기준 경과 연수 (Year - 1908)
+# 2. 선형 회귀 계산 (전체 기간: 1908년 기준 경과 연수 사용)
 data["경과연수"] = data["연도"] - 1908
-X = data["경과연수"]
-y = data["연평균기온"]
+X_full = data["경과연수"]
+y_full = data["연평균기온"]
 
-slope, intercept, r_value, p_value, std_err = stats.linregress(X, y)
-r_squared = r_value ** 2
+slope_full, intercept_full, r_val_full, _, _ = stats.linregress(X_full, y_full)
+r2_full = r_val_full ** 2
 
-# 3. 주요 정보 안내 표시
+# 100년당 상승 온도로 변환 (1년당 기울기 * 100)
+slope_100y_full = slope_full * 100
+
+# 3. 선형 회귀 계산 (최근 20년 데이터만 추출)
+latest_year = data["연도"].max()
+data_recent20 = data[data["연도"] >= (latest_year - 19)].copy()
+
+X_recent = data_recent20["경과연수"]
+y_recent = data_recent20["연평균기온"]
+
+slope_recent, intercept_recent, r_val_recent, _, _ = stats.linregress(X_recent, y_recent)
+slope_100y_recent = slope_recent * 100
+
+# 4. 분석 개요 및 100년당 기온 상승률 비교 (나란히 배치)
 min_year = int(data["연도"].min())
 max_year = int(data["연도"].max())
 total_years = len(data)
 
-st.markdown(f"""
----
-### 📊 데이터 요약 정보
-- **분석에 사용된 연도 개수:** `{total_years}`개 연도
-- **분석 시작 연도:** `{min_year}`년
-- **분석 종료 연도:** `{max_year}`년
----
-""")
+st.markdown("---")
+st.markdown("### 📈 100년당 기온 상승 속도 비교")
 
-# 4. 연도 선택 슬라이더 및 예측
+# 메트릭 카드를 2개의 컬럼으로 나란히 표시
+col1, col2 = st.columns(2)
+
+with col1:
+    st.metric(
+        label=f"🌐 전체 기간 ({min_year}~{max_year}년, {total_years}개 연도)",
+        value=f"+{slope_100y_full:.2f} °C / 100년",
+        help="1년 평균 상승 폭을 100년 단위로 환산한 값입니다."
+    )
+
+with col2:
+    recent_min = int(data_recent20["연도"].min())
+    recent_max = int(data_recent20["연도"].max())
+    diff_rate = slope_100y_recent - slope_100y_full
+    st.metric(
+        label=f"🔥 최근 20년 ({recent_min}~{recent_max}년)",
+        value=f"+{slope_100y_recent:.2f} °C / 100년",
+        delta=f"전체 대비 {diff_rate:+.2f} °C/100년 빠른 상승",
+        delta_color="inverse"  # 기온 상승 속도가 빠른 것을 경고(빨간색)로 표시
+    )
+
+st.markdown("---")
+
+# 5. 연도 선택 슬라이더 및 예측 (전체 기간 회귀선 기준)
 st.subheader("🔮 연도별 예상 기온 예측")
 selected_year = st.slider("예측할 연도를 선택하세요", min_value=1900, max_value=2100, value=2026, step=1)
 
-# 회귀 방정식을 통한 기온 예측: y = slope * (연도 - 1908) + intercept
 pred_elapsed = selected_year - 1908
-predicted_temp = slope * pred_elapsed + intercept
+predicted_temp = slope_full * pred_elapsed + intercept_full
 
-st.metric(label=f"{selected_year}년 예상 연평균 기온", value=f"{predicted_temp:.2f} °C")
+st.metric(label=f"{selected_year}년 예상 연평균 기온 (전체 추세 기준)", value=f"{predicted_temp:.2f} °C")
 
-# 5. Plotly 그래프 그리기
+# 6. Plotly 그래프 그리기
 fig = go.Figure()
 
 # 실제 관측 데이터 산점도
@@ -81,17 +106,28 @@ fig.add_trace(go.Scatter(
     marker=dict(color='#1f77b4', size=8)
 ))
 
-# 회귀 직선 (1900년 ~ 2100년 영역)
+# 전체 기간 회귀 직선 (1900년 ~ 2100년)
 line_years = np.array(range(1900, 2101))
 line_elapsed = line_years - 1908
-line_pred = slope * line_elapsed + intercept
+line_pred_full = slope_full * line_elapsed + intercept_full
 
 fig.add_trace(go.Scatter(
     x=line_years,
-    y=line_pred,
+    y=line_pred_full,
     mode='lines',
-    name='선형 회귀선',
+    name=f'전체 기간 추세선 (+{slope_100y_full:.2f}°C/100년)',
     line=dict(color='#ff7f0e', width=2)
+))
+
+# 최근 20년 회귀 직선 (1900년 ~ 2100년)
+line_pred_recent = slope_recent * line_elapsed + intercept_recent
+
+fig.add_trace(go.Scatter(
+    x=line_years,
+    y=line_pred_recent,
+    mode='lines',
+    name=f'최근 20년 추세선 (+{slope_100y_recent:.2f}°C/100년)',
+    line=dict(color='#e377c2', width=2, dash='dash')
 ))
 
 # 선택된 연도의 예측점 강조
@@ -105,7 +141,7 @@ fig.add_trace(go.Scatter(
 
 # 레이아웃 설정
 fig.update_layout(
-    title=f"서울 연평균 기온 및 추세선 (상관계수 R: {r_value:.4f}, R²: {r_squared:.4f})",
+    title=f"서울 연평균 기온 및 추세선 비교 (전체 상관계수 R: {r_val_full:.4f})",
     xaxis_title="연도",
     yaxis_title="평균 기온 (°C)",
     hovermode="x unified",
